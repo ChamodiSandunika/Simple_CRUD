@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface Book {
   id?: number;
@@ -14,6 +14,7 @@ interface Book {
 interface Toast {
   message: string;
   type: 'success' | 'error';
+  id: number;
 }
 
 export default function Home() {
@@ -22,6 +23,11 @@ export default function Home() {
   const [showForm, setShowForm] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; bookId: number | null; bookTitle: string }>({
+    show: false,
+    bookId: null,
+    bookTitle: ''
+  });
   const [formData, setFormData] = useState<Book>({
     title: '',
     author: '',
@@ -31,11 +37,31 @@ export default function Home() {
   });
 
   const API_URL = 'http://localhost:8080/api/books';
+  const toastTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const toastIdRef = React.useRef<number>(0);
 
   // Show toast notification
   const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    // Clear any existing timeout
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    
+    // Clear toast immediately
+    setToast(null);
+    
+    // Set new toast with unique ID after a brief delay
+    const newToastId = ++toastIdRef.current;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setToast({ message, type, id: newToastId });
+        toastTimeoutRef.current = setTimeout(() => {
+          setToast(null);
+          toastTimeoutRef.current = null;
+        }, 3000);
+      });
+    });
   };
 
   // Fetch all books
@@ -55,6 +81,13 @@ export default function Home() {
 
   useEffect(() => {
     fetchBooks();
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Create or Update book
@@ -84,10 +117,15 @@ export default function Home() {
   };
 
   // Delete book
-  const handleDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this book?')) {
+  const handleDelete = async (id: number, title: string) => {
+    setDeleteConfirm({ show: true, bookId: id, bookTitle: title });
+  };
+
+  // Confirm delete
+  const confirmDelete = async () => {
+    if (deleteConfirm.bookId) {
       try {
-        const response = await fetch(`${API_URL}/${id}`, {
+        const response = await fetch(`${API_URL}/${deleteConfirm.bookId}`, {
           method: 'DELETE',
         });
 
@@ -100,6 +138,12 @@ export default function Home() {
         showToast('Failed to delete book', 'error');
       }
     }
+    setDeleteConfirm({ show: false, bookId: null, bookTitle: '' });
+  };
+
+  // Cancel delete
+  const cancelDelete = () => {
+    setDeleteConfirm({ show: false, bookId: null, bookTitle: '' });
   };
 
   // Edit book
@@ -123,76 +167,136 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      {/* Toast Notification */}
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 py-8 px-4">
+      {/* Toast Notification with Animation */}
       {toast && (
         <div
-          className={`fixed top-4 left-1/2 transform -translate-x-1/2 px-8 py-4 rounded-lg shadow-2xl text-white z-50 transition-opacity text-lg font-medium ${
-            toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+          key={toast.id}
+          className={`fixed px-8 py-4 rounded-xl shadow-2xl text-white text-lg font-semibold pointer-events-none ${
+            toast.type === 'success' ? 'bg-gradient-to-r from-green-400 to-green-600' : 'bg-gradient-to-r from-red-400 to-red-600'
           }`}
+          style={{
+            top: '1rem',
+            left: '50%',
+            animation: 'slideDown 0.3s ease-out forwards',
+            zIndex: 9999
+          }}
         >
-          {toast.message}
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">{toast.type === 'success' ? '✓' : '✕'}</span>
+            {toast.message}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm.show && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 transform animate-[scaleIn_0.3s_ease-out]">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+                <span className="text-4xl">🗑️</span>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">Delete Book?</h3>
+              <p className="text-gray-600 mb-2">
+                Are you sure you want to delete this book?
+              </p>
+              <p className="text-lg font-semibold text-indigo-600 mb-6">
+                "{deleteConfirm.bookTitle}"
+              </p>
+              <p className="text-sm text-gray-500 mb-6">
+                This action cannot be undone.
+              </p>
+              <div className="flex gap-4">
+                <button
+                  onClick={cancelDelete}
+                  className="flex-1 bg-gradient-to-r from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg"
+                >
+                  ✕ Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="flex-1 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg"
+                >
+                  🗑️ Delete
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
       <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold text-gray-800">Book Management System</h1>
+        {/* Header Card */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-8 mb-6 border border-purple-100">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
+                📚 Book Management System
+              </h1>
+              <p className="text-gray-600">Manage your book collection with ease</p>
+            </div>
             <button
               onClick={() => setShowForm(!showForm)}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors"
+              className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg ${
+                showForm
+                  ? 'bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white'
+                  : 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white'
+              }`}
             >
-              {showForm ? 'Cancel' : 'Add New Book'}
+              {showForm ? '✕ Cancel' : '+ Add New Book'}
             </button>
           </div>
 
-          {/* Form */}
+          {/* Form with Animation */}
           {showForm && (
-            <form onSubmit={handleSubmit} className="bg-gray-50 p-6 rounded-lg mb-6">
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">
-                {editingBook ? 'Edit Book' : 'Add New Book'}
+            <form onSubmit={handleSubmit} className="bg-gradient-to-br from-indigo-50 to-purple-50 p-8 rounded-xl mb-6 border border-indigo-200 shadow-inner animate-[fadeIn_0.3s_ease-out]">
+              <h2 className="text-2xl font-bold mb-6 text-indigo-900 flex items-center gap-2">
+                {editingBook ? '✏️ Edit Book' : '➕ Add New Book'}
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Title *
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="group">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
+                    📖 Title *
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500 transition-all text-gray-800 bg-white shadow-sm"
+                    placeholder="Enter book title"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Author *
+                <div className="group">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
+                    ✍️ Author *
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.author}
                     onChange={(e) => setFormData({ ...formData, author: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500 transition-all text-gray-800 bg-white shadow-sm"
+                    placeholder="Enter author name"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    ISBN *
+                <div className="group">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
+                    🔢 ISBN *
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.isbn}
                     onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500 transition-all text-gray-800 bg-white shadow-sm"
+                    placeholder="Enter ISBN number"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price *
+                <div className="group">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
+                    💰 Price *
                   </label>
                   <input
                     type="number"
@@ -200,34 +304,36 @@ export default function Home() {
                     required
                     value={formData.price || ''}
                     onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500 transition-all text-gray-800 bg-white shadow-sm"
+                    placeholder="0.00"
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
+                <div className="md:col-span-2 group">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 group-focus-within:text-indigo-600 transition-colors">
+                    📝 Description
                   </label>
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800"
+                    rows={4}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-indigo-200 focus:border-indigo-500 transition-all text-gray-800 bg-white shadow-sm resize-none"
+                    placeholder="Enter book description (optional)"
                   />
                 </div>
               </div>
-              <div className="flex gap-4 mt-6">
+              <div className="flex gap-4 mt-8">
                 <button
                   type="submit"
-                  className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg transition-colors"
+                  className="flex-1 md:flex-none bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-8 py-3 rounded-xl transition-all duration-300 transform hover:scale-105 font-semibold shadow-lg"
                 >
-                  {editingBook ? 'Update Book' : 'Create Book'}
+                  {editingBook ? '💾 Update Book' : '✓ Create Book'}
                 </button>
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors"
+                  className="flex-1 md:flex-none bg-gradient-to-r from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white px-8 py-3 rounded-xl transition-all duration-300 transform hover:scale-105 font-semibold shadow-lg"
                 >
-                  Cancel
+                  ✕ Cancel
                 </button>
               </div>
             </form>
@@ -235,51 +341,65 @@ export default function Home() {
 
           {/* Books List */}
           <div>
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">All Books</h2>
+            <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">
+              📚 All Books <span className="text-sm font-normal text-gray-500">({books.length} total)</span>
+            </h2>
             {isLoading ? (
-              <div className="text-center py-8 text-gray-600">Loading books...</div>
+              <div className="text-center py-16">
+                <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-indigo-200 border-t-indigo-600"></div>
+                <p className="mt-4 text-gray-600 font-medium">Loading books...</p>
+              </div>
             ) : books.length === 0 ? (
-              <div className="text-center py-8 text-gray-600">
-                No books found. Click "Add New Book" to create one.
+              <div className="text-center py-16 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-300">
+                <div className="text-6xl mb-4">📚</div>
+                <p className="text-gray-600 font-medium text-lg">No books found</p>
+                <p className="text-gray-500 mt-2">Click "Add New Book" to create your first book</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
+              <div className="overflow-x-auto rounded-xl shadow-lg border border-gray-200">
+                <table className="w-full">
                   <thead>
-                    <tr className="bg-gray-100">
-                      <th className="border border-gray-300 px-4 py-2 text-left text-gray-800">ID</th>
-                      <th className="border border-gray-300 px-4 py-2 text-left text-gray-800">Title</th>
-                      <th className="border border-gray-300 px-4 py-2 text-left text-gray-800">Author</th>
-                      <th className="border border-gray-300 px-4 py-2 text-left text-gray-800">ISBN</th>
-                      <th className="border border-gray-300 px-4 py-2 text-left text-gray-800">Price</th>
-                      <th className="border border-gray-300 px-4 py-2 text-left text-gray-800">Description</th>
-                      <th className="border border-gray-300 px-4 py-2 text-left text-gray-800">Actions</th>
+                    <tr className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
+                      <th className="px-6 py-4 text-left font-semibold">ID</th>
+                      <th className="px-6 py-4 text-left font-semibold">Title</th>
+                      <th className="px-6 py-4 text-left font-semibold">Author</th>
+                      <th className="px-6 py-4 text-left font-semibold">ISBN</th>
+                      <th className="px-6 py-4 text-left font-semibold">Price</th>
+                      <th className="px-6 py-4 text-left font-semibold">Description</th>
+                      <th className="px-6 py-4 text-center font-semibold">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {books.map((book) => (
-                      <tr key={book.id} className="hover:bg-gray-50">
-                        <td className="border border-gray-300 px-4 py-2 text-gray-800">{book.id}</td>
-                        <td className="border border-gray-300 px-4 py-2 text-gray-800">{book.title}</td>
-                        <td className="border border-gray-300 px-4 py-2 text-gray-800">{book.author}</td>
-                        <td className="border border-gray-300 px-4 py-2 text-gray-800">{book.isbn}</td>
-                        <td className="border border-gray-300 px-4 py-2 text-gray-800">${book.price.toFixed(2)}</td>
-                        <td className="border border-gray-300 px-4 py-2 text-gray-800 max-w-xs truncate">
-                          {book.description}
+                  <tbody className="bg-white">
+                    {books.map((book, index) => (
+                      <tr 
+                        key={book.id} 
+                        className={`transition-all duration-200 hover:bg-indigo-50 ${
+                          index % 2 === 0 ? 'bg-gray-50' : 'bg-white'
+                        }`}
+                      >
+                        <td className="px-6 py-4 text-gray-700 font-medium border-b border-gray-200">{book.id}</td>
+                        <td className="px-6 py-4 text-gray-800 font-semibold border-b border-gray-200">{book.title}</td>
+                        <td className="px-6 py-4 text-gray-700 border-b border-gray-200">{book.author}</td>
+                        <td className="px-6 py-4 text-gray-600 font-mono text-sm border-b border-gray-200">{book.isbn}</td>
+                        <td className="px-6 py-4 text-green-600 font-bold border-b border-gray-200">${book.price.toFixed(2)}</td>
+                        <td className="px-6 py-4 text-gray-600 border-b border-gray-200">
+                          <div className="max-w-xs truncate" title={book.description}>
+                            {book.description || <span className="text-gray-400 italic">No description</span>}
+                          </div>
                         </td>
-                        <td className="border border-gray-300 px-4 py-2">
-                          <div className="flex gap-2">
+                        <td className="px-6 py-4 border-b border-gray-200">
+                          <div className="flex gap-2 justify-center">
                             <button
                               onClick={() => handleEdit(book)}
-                              className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded transition-colors text-sm"
+                              className="bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-white px-4 py-2 rounded-lg transition-all duration-300 transform hover:scale-105 font-medium shadow-md text-sm"
                             >
-                              Edit
+                              ✏️ Edit
                             </button>
                             <button
-                              onClick={() => handleDelete(book.id!)}
-                              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded transition-colors text-sm"
+                              onClick={() => handleDelete(book.id!, book.title)}
+                              className="bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white px-4 py-2 rounded-lg transition-all duration-300 transform hover:scale-105 font-medium shadow-md text-sm"
                             >
-                              Delete
+                              🗑️ Delete
                             </button>
                           </div>
                         </td>
