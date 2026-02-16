@@ -88,7 +88,7 @@ export default function UpdateBookPage() {
     if (!book) return;
 
     try {
-      const response = await fetch(`${API_URL}/update/${id}`, {
+      const response = await fetch(`${API_URL}/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

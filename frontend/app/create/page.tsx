@@ -59,7 +59,7 @@ export default function CreateBookPage() {
     e.preventDefault();
 
     try {
-      const response = await fetch(`${API_URL}/create`, {
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
