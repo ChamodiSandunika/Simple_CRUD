@@ -84,7 +84,7 @@ export default function DeleteDetailPage() {
   const doDelete = async () => {
     if (!id) return;
     try {
-      const res = await fetch(`${API}/delete/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API}/${id}`, { method: 'DELETE' });
       if (res.ok) {
         showToast('Book deleted successfully!', 'success');
         setTimeout(() => router.push('/'), 1500);
