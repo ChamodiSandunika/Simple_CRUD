@@ -25,7 +25,11 @@ export default function Home() {
       setIsLoading(true);
       const response = await fetch(API_URL);
       const data = await response.json();
-      setBooks(data);
+      // Ensure list is always ordered by numeric id ascending so UI order stays stable
+      const sorted = Array.isArray(data)
+        ? data.slice().sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
+        : [];
+      setBooks(sorted);
     } catch (error) {
       console.error('Error fetching books:', error);
     } finally {
