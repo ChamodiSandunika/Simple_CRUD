@@ -12,7 +12,7 @@ backend/src/main/resources/application.properties
 backend/src/main/resources/application-*.properties
 
 # Frontend (Next.js)
-frontend/node_modules/
+node_modules/
 frontend/.next/
 frontend/out/
 frontend/build/
